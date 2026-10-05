@@ -121,6 +121,9 @@ class LauncherActivity : Activity(), WindowFrame.Host {
     private lateinit var searchPill: LinearLayout
     private lateinit var searchText: TextView
     private val trayOptional = ArrayList<View>()
+    private var batteryIcon: BatteryIcon? = null
+    private var taskbar: View? = null
+    private var hotEdge: View? = null
 
     private val windows = ArrayList<WindowFrame>()
     private val taskButtons = HashMap<String, TaskBtn>()
@@ -163,6 +166,7 @@ class LauncherActivity : Activity(), WindowFrame.Host {
             val t = SimpleDateFormat("HH:mm", Locale.getDefault()).format(d)
             val dt = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(d)
             clock.text = t + "\n" + dt
+            batteryIcon?.refreshLevel()
             ui.postDelayed(this, 10000)
         }
     }
@@ -179,10 +183,15 @@ class LauncherActivity : Activity(), WindowFrame.Host {
             AppItem("Notepad", "", builtinIcon("notepad"), "notepad"),
             AppItem("Kalkulator", "", builtinIcon("calc"), "calc"),
             AppItem("Personalisasi", "", builtinIcon("personalize"), "personalize"),
-            AppItem("Pengaturan", "", builtinIcon("settings"), "settings")
+            AppItem("Pengaturan", "", builtinIcon("settings"), "settings"),
+            AppItem("Pusat Tindakan", "", builtinIcon("actioncenter"), "actioncenter"),
+            AppItem("Keymapping", "", builtinIcon("keymap"), "keymap")
         )
         buildUi()
         setContentView(root)
+        WinCursor.apply(root)
+        NotifService.listener = { app, title, text, pkg -> runOnUiThread { showToast(app, title, text, pkg) } }
+        applyAutoHide()
         applyWallpaper()
         applyTaskbarLayout()
         refreshDesktop()
@@ -216,6 +225,7 @@ class LauncherActivity : Activity(), WindowFrame.Host {
     }
 
     override fun onDestroy() {
+        NotifService.listener = null
         wallpaper.release()
         for (w in ArrayList(windows)) w.onDispose?.invoke()
         super.onDestroy()
@@ -264,7 +274,7 @@ class LauncherActivity : Activity(), WindowFrame.Host {
         wallpaper = WallpaperView(this)
         wallpaper.onError = {
             runOnUiThread {
-                prefs.edit().putString("wall_mode", "gradient").apply()
+                prefs.edit().putString("wall_mode", "bloom").apply()
                 applyWallpaper()
                 toast("Video wallpaper tidak bisa diputar")
             }
@@ -462,15 +472,18 @@ class LauncherActivity : Activity(), WindowFrame.Host {
         trayFloat.layoutParams = LinearLayout.LayoutParams(dp(36), MP)
         bar.addView(trayFloat)
 
-        val wifi = trayIcon(Glyph.WIFI, 32) { openSettings(Settings.ACTION_WIFI_SETTINGS) }
+        val wifi = trayIcon(Glyph.WIFI, 32) { openWindow("actioncenter") }
         trayOptional.add(wifi)
         bar.addView(wifi)
-        val vol = trayIcon(Glyph.VOLUME, 32) {
-            val am = getSystemService(AUDIO_SERVICE) as AudioManager
-            am.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_SAME, AudioManager.FLAG_SHOW_UI)
-        }
+        val vol = trayIcon(Glyph.VOLUME, 32) { openWindow("actioncenter") }
         trayOptional.add(vol)
         bar.addView(vol)
+
+        val battery = BatteryIcon(this)
+        battery.layoutParams = LinearLayout.LayoutParams(dp(34), MP)
+        battery.setOnClickListener { openWindow("actioncenter") }
+        bar.addView(battery)
+        batteryIcon = battery
 
         clock = TextView(this)
         clock.setTextColor(Color.WHITE)
@@ -479,7 +492,7 @@ class LauncherActivity : Activity(), WindowFrame.Host {
         clock.setPadding(dp(8), 0, dp(8), 0)
         bar.addView(clock, LinearLayout.LayoutParams(WC, MP))
 
-        bar.addView(trayIcon(Glyph.BELL, 32) { expandNotifications() })
+        bar.addView(trayIcon(Glyph.BELL, 32) { openWindow("actioncenter") })
 
         val showDesk = View(this)
         showDesk.setBackgroundColor(Color.parseColor("#44FFFFFF"))
@@ -487,6 +500,16 @@ class LauncherActivity : Activity(), WindowFrame.Host {
         bar.addView(showDesk, LinearLayout.LayoutParams(dp(8), MP))
 
         root.addView(bar, FrameLayout.LayoutParams(MP, taskH, Gravity.BOTTOM))
+        taskbar = bar
+        val edge = View(this)
+        edge.visibility = View.GONE
+        edge.setOnHoverListener { _, ev ->
+            if (ev.actionMasked == MotionEvent.ACTION_HOVER_ENTER) peekTaskbar()
+            false
+        }
+        edge.setOnClickListener { peekTaskbar() }
+        root.addView(edge, FrameLayout.LayoutParams(MP, dp(10), Gravity.BOTTOM))
+        hotEdge = edge
 
         anchor = View(this)
         root.addView(anchor, FrameLayout.LayoutParams(1, 1))
@@ -577,7 +600,7 @@ class LauncherActivity : Activity(), WindowFrame.Host {
             cell.addView(img, LinearLayout.LayoutParams(dp(44), dp(44)))
 
             val tv = TextView(this@LauncherActivity)
-            tv.text = item.label
+            tv.text = if (item.label.endsWith(".exe")) item.label else item.label + ".exe"
             tv.setTextColor(Color.WHITE)
             tv.textSize = 11.5f
             tv.gravity = Gravity.CENTER
@@ -650,24 +673,22 @@ class LauncherActivity : Activity(), WindowFrame.Host {
 
     // ------------------------------------------------------------------ wallpaper
 
+    /** Default selalu Bloom biru; foto/video dari galeri bisa dipilih, dan "Kembalikan" memulihkan Bloom. */
     private fun applyWallpaper() {
-        when (prefs.getString("wall_mode", "gradient")) {
+        when (prefs.getString("wall_mode", "bloom")) {
             "image" -> {
                 val bmp = decodeFile(File(filesDir, "wallpaper.jpg"))
-                if (bmp != null) wallpaper.showImage(bmp) else gradientWallpaper()
+                if (bmp != null) wallpaper.showImage(bmp) else wallpaper.showDrawable(BloomWallpaper())
             }
             "video" -> {
                 val u = prefs.getString("wall_uri", null)
-                if (u != null) wallpaper.showVideo(Uri.parse(u)) else gradientWallpaper()
+                if (u != null) wallpaper.showVideo(Uri.parse(u)) else wallpaper.showDrawable(BloomWallpaper())
             }
-            else -> gradientWallpaper()
+            else -> wallpaper.showDrawable(BloomWallpaper())
         }
     }
 
-    private fun gradientWallpaper() {
-        val idx = prefs.getInt("wall", 0) % wallpapers.size
-        wallpaper.showGradient(wallpapers[idx])
-    }
+    private fun gradientWallpaper() = applyWallpaper()
 
     private fun decodeFile(f: File): Bitmap? {
         if (!f.exists()) return null
@@ -688,17 +709,14 @@ class LauncherActivity : Activity(), WindowFrame.Host {
     }
 
     private fun nextWallpaper() {
-        prefs.edit()
-            .putString("wall_mode", "gradient")
-            .putInt("wall", (prefs.getInt("wall", 0) + 1) % wallpapers.size)
-            .apply()
+        prefs.edit().putString("wall_mode", "bloom").apply()
         applyWallpaper()
     }
 
     private fun resetWallpaper() {
-        prefs.edit().putString("wall_mode", "gradient").putInt("wall", 0).apply()
+        prefs.edit().putString("wall_mode", "bloom").apply()
         applyWallpaper()
-        toast("Wallpaper dikembalikan ke default")
+        toast("Wallpaper dikembalikan ke Bloom biru")
     }
 
     private fun pickWallpaper(video: Boolean) {
@@ -790,7 +808,9 @@ class LauncherActivity : Activity(), WindowFrame.Host {
         if (id != null) openWindow(id) else launchApp(item.pkg)
     }
 
-    private fun launchApp(pkg: String) {
+    private fun launchApp(pkg: String, modeOverride: String? = null) {
+        KeyMapService.game = pkg
+        val mode = modeOverride ?: (prefs.getString("winmode", "window") ?: "window")
         val i = packageManager.getLaunchIntentForPackage(pkg)
         if (i == null) {
             toast("Aplikasi tidak bisa dibuka")
@@ -798,12 +818,13 @@ class LauncherActivity : Activity(), WindowFrame.Host {
         }
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         try {
-            if (prefs.getBoolean("freeform", true)) {
+            if (mode != "fullscreen" && prefs.getBoolean("freeform", true)) {
                 val dm = resources.displayMetrics
-                val w = (dm.widthPixels * 0.6f).toInt()
-                val h = (dm.heightPixels * 0.7f).toInt()
+                val bl = mode == "borderless"
+                val w = if (bl) dm.widthPixels else (dm.widthPixels * 0.6f).toInt()
+                val h = if (bl) dm.heightPixels else (dm.heightPixels * 0.7f).toInt()
                 val l = (dm.widthPixels - w) / 2
-                val t = dp(24)
+                val t = if (bl) 0 else dp(24)
                 val opts = ActivityOptions.makeBasic()
                 opts.setLaunchBounds(Rect(l, t, l + w, t + h))
                 try {
@@ -916,6 +937,9 @@ class LauncherActivity : Activity(), WindowFrame.Host {
         val e = ArrayList<Pair<String, () -> Unit>>()
         e.add(Pair("Buka", { openItem(item) }))
         if (item.id == null) {
+            e.add(Pair("Buka - Jendela", { closeStart(); launchApp(item.pkg, "window") }))
+            e.add(Pair("Buka - Borderless", { closeStart(); launchApp(item.pkg, "borderless") }))
+            e.add(Pair("Buka - Layar penuh", { closeStart(); launchApp(item.pkg, "fullscreen") }))
             val pinned = pins().contains(item.pkg)
             e.add(Pair(if (pinned) "Lepas dari desktop" else "Sematkan ke desktop", { togglePin(item.pkg) }))
             e.add(Pair("Info aplikasi", { appInfo(item.pkg) }))
@@ -932,6 +956,8 @@ class LauncherActivity : Activity(), WindowFrame.Host {
         e.add(Pair("Notepad", { openWindow("notepad") }))
         e.add(Pair("Kalkulator", { openWindow("calc") }))
         e.add(Pair("Personalisasi (wallpaper)", { openWindow("personalize") }))
+        e.add(Pair("Pusat Tindakan", { openWindow("actioncenter") }))
+        e.add(Pair("Keymapping", { openWindow("keymap") }))
         e.add(Pair("Pengaturan", { openWindow("settings") }))
         showMenu(x, y, e)
     }
@@ -1086,7 +1112,9 @@ class LauncherActivity : Activity(), WindowFrame.Host {
                 )
             }
             "settings" -> Spec("Pengaturan", settingsView(), 420, 480)
-            "personalize" -> Spec("Personalisasi", personalizeView(), 400, 340)
+            "personalize" -> Spec("Personalisasi", personalizeView(), 400, 260)
+            "actioncenter" -> Spec("Pusat Tindakan", actionCenterView(this), 360, 440)
+            "keymap" -> Spec("Keymapping", keymapView(this), 400, 480)
             "browser" -> {
                 val p = WebPane(this, FloatingWindowService.HOME_BROWSER, FloatingWindowService.HOME_BROWSER, true)
                 Spec("Peramban", p.view, 560, 420, p) { p.destroy() }
@@ -1222,36 +1250,40 @@ class LauncherActivity : Activity(), WindowFrame.Host {
 
     private fun personalizeView(): View {
         val (sv, col) = panel()
-        heading(col, "Latar belakang desktop")
+        heading(col, "Latar belakang desktop (default: Bloom biru)")
         menuRow(col, Glyph.IMAGE, "Pilih foto dari galeri") { pickWallpaper(false) }
         menuRow(col, Glyph.VIDEO, "Pilih video dari galeri (wallpaper bergerak)") { pickWallpaper(true) }
-        menuRow(col, Glyph.IMAGE, "Warna bawaan berikutnya") { nextWallpaper() }
-        menuRow(col, Glyph.RELOAD, "Kembalikan ke default") { resetWallpaper() }
+        menuRow(col, Glyph.RELOAD, "Kembalikan ke Windows Bloom biru") { resetWallpaper() }
         return sv
     }
 
     private fun settingsView(): View {
         val (sv, col) = panel()
-        heading(col, "Gunz Launcher v2.0")
-        menuRow(col, Glyph.IMAGE, "Personalisasi (wallpaper foto / video)") { openWindow("personalize") }
-        menuRow(col, Glyph.POPOUT, "Tombol mengambang (keluar-masuk launcher)") { toggleFloat() }
-        menuRow(col, Glyph.PLAY, "YouTube & Peramban selalu mengambang di atas aplikasi (nyala/mati)") { toggleFloatWeb() }
-        menuRow(col, Glyph.MAXIMIZE, "Buka aplikasi di jendela bebas (nyala/mati)") {
-            val v = !prefs.getBoolean("freeform", true)
-            prefs.edit().putBoolean("freeform", v).apply()
-            toast(if (v) "Jendela bebas: nyala" else "Jendela bebas: mati")
+        heading(col, "Pengaturan - Gunz Launcher v3.0")
+        menuRow(col, Glyph.IMAGE, "Personalisasi (ganti wallpaper)") { openWindow("personalize") }
+        menuRow(col, Glyph.BELL, "Pusat Tindakan (Wi-Fi, Bluetooth, Volume, Kecerahan, Data, GPS)") { openWindow("actioncenter") }
+        menuRow(col, Glyph.GRIP, "Keymapping keyboard & mouse") { openWindow("keymap") }
+        menuRow(col, Glyph.BELL, "Notifikasi gaya Windows (beri akses notifikasi)") { openNotificationAccess(this) }
+        menuRow(col, Glyph.MINIMIZE, "Taskbar otomatis sembunyi (nyala/mati)") {
+            val v = !prefs.getBoolean("autohide", false)
+            prefs.edit().putBoolean("autohide", v).apply()
+            applyAutoHide()
+            toast(if (v) "Taskbar auto-hide: nyala" else "Taskbar auto-hide: mati")
         }
-        menuRow(col, Glyph.GLOBE, "Cara mengambangkan aplikasi lain") { freeformGuide() }
-        menuRow(col, Glyph.GEAR, "Opsi pengembang (aktifkan freeform)") { openSettings(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS) }
+        menuRow(col, Glyph.MAXIMIZE, "Mode buka aplikasi: " + modeLabel(prefs.getString("winmode", "window") ?: "window") + " (ketuk untuk ganti)") {
+            val next = when (prefs.getString("winmode", "window")) { "window" -> "borderless"; "borderless" -> "fullscreen"; else -> "window" }
+            prefs.edit().putString("winmode", next).apply()
+            toast("Mode: " + modeLabel(next))
+        }
+        menuRow(col, Glyph.POPOUT, "Tombol mengambang (keluar-masuk launcher)") { toggleFloat() }
+        menuRow(col, Glyph.PLAY, "YouTube & Peramban selalu mengambang (nyala/mati)") { toggleFloatWeb() }
+        menuRow(col, Glyph.GLOBE, "Cara mengaktifkan jendela bebas untuk aplikasi lain") { freeformGuide() }
         menuRow(col, Glyph.POPOUT, "Izin tampil di atas aplikasi lain") { openSettings(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, true) }
-        menuRow(col, Glyph.WIFI, "Wi-Fi") { openSettings(Settings.ACTION_WIFI_SETTINGS) }
-        menuRow(col, Glyph.GEAR, "Bluetooth") { openSettings(Settings.ACTION_BLUETOOTH_SETTINGS) }
-        menuRow(col, Glyph.GEAR, "Layar") { openSettings(Settings.ACTION_DISPLAY_SETTINGS) }
-        menuRow(col, Glyph.GEAR, "Aplikasi") { openSettings(Settings.ACTION_APPLICATION_SETTINGS) }
         menuRow(col, Glyph.POWER, "Ganti Beranda / Keluar Launcher") { exitLauncher() }
-        menuRow(col, Glyph.GEAR, "Pengaturan Android") { openSettings(Settings.ACTION_SETTINGS) }
         return sv
     }
+
+    private fun modeLabel(m: String) = when (m) { "borderless" -> "Borderless"; "fullscreen" -> "Layar penuh"; else -> "Jendela" }
 
     // ------------------------------------------------------------------ keyboard
 
@@ -1307,6 +1339,70 @@ class LauncherActivity : Activity(), WindowFrame.Host {
             return true
         }
         return super.onKeyUp(keyCode, event)
+    }
+
+    private fun applyAutoHide() {
+        val on = prefs.getBoolean("autohide", false)
+        val tb = taskbar ?: return
+        val lpL = layer.layoutParams as FrameLayout.LayoutParams
+        lpL.bottomMargin = if (on) 0 else taskH
+        layer.layoutParams = lpL
+        val lpD = desktop.layoutParams as FrameLayout.LayoutParams
+        lpD.bottomMargin = if (on) 0 else taskH
+        desktop.layoutParams = lpD
+        tb.translationY = if (on) taskH.toFloat() else 0f
+        hotEdge?.visibility = if (on) View.VISIBLE else View.GONE
+    }
+
+    private fun peekTaskbar() {
+        val tb = taskbar ?: return
+        tb.animate().translationY(0f).setDuration(120).start()
+        ui.removeCallbacks(hideBar)
+        ui.postDelayed(hideBar, 3000)
+    }
+
+    private val hideBar = Runnable {
+        if (prefs.getBoolean("autohide", false) && !isStartOpen()) {
+            taskbar?.animate()?.translationY(taskH.toFloat())?.setDuration(120)?.start()
+        }
+    }
+
+    /** Notifikasi masuk (SMS, WhatsApp, dll) tampil sebagai toast Windows di pojok kanan bawah. */
+    private fun showToast(app: String, title: String, text: String, pkg: String) {
+        val card = LinearLayout(this)
+        card.orientation = LinearLayout.VERTICAL
+        card.background = rounded("#F22B2B2B", 8)
+        card.setPadding(dp(14), dp(10), dp(14), dp(12))
+        card.elevation = dp(24).toFloat()
+        val a = TextView(this)
+        a.text = app
+        a.setTextColor(Color.parseColor("#B3FFFFFF"))
+        a.textSize = 11f
+        card.addView(a)
+        val t = TextView(this)
+        t.text = title
+        t.setTextColor(Color.WHITE)
+        t.textSize = 14f
+        t.setTypeface(t.typeface, android.graphics.Typeface.BOLD)
+        t.maxLines = 1
+        card.addView(t)
+        val b = TextView(this)
+        b.text = text
+        b.setTextColor(Color.parseColor("#E6FFFFFF"))
+        b.textSize = 12.5f
+        b.maxLines = 3
+        card.addView(b)
+        val lp = FrameLayout.LayoutParams(minOf(dp(340), resources.displayMetrics.widthPixels - dp(16)), WC, Gravity.BOTTOM or Gravity.END)
+        lp.bottomMargin = taskH + dp(10)
+        lp.rightMargin = dp(8)
+        root.addView(card, lp)
+        card.setOnClickListener {
+            root.removeView(card)
+            launchApp(pkg, "window")
+        }
+        card.alpha = 0f
+        card.animate().alpha(1f).setDuration(150).start()
+        ui.postDelayed({ if (card.parent != null) root.removeView(card) }, 6000)
     }
 
     private fun toast(s: String) {

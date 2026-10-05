@@ -32,6 +32,12 @@ class WallpaperView(ctx: Context) : FrameLayout(ctx), TextureView.SurfaceTexture
         addView(image, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
     }
 
+    fun showDrawable(d: android.graphics.drawable.Drawable) {
+        stopVideo()
+        image.setImageDrawable(null)
+        background = d
+    }
+
     fun showGradient(colors: IntArray) {
         stopVideo()
         image.setImageDrawable(null)

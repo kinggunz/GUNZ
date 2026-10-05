@@ -354,6 +354,8 @@ fun builtinIcon(id: String): Drawable = when (id) {
     "youtube" -> GlyphIcon(Glyph.PLAY, Color.WHITE, Color.parseColor("#E62117"))
     "notepad" -> GlyphIcon(Glyph.NOTE, Color.WHITE, Color.parseColor("#2D9CDB"))
     "calc" -> GlyphIcon(Glyph.CALC, Color.WHITE, Color.parseColor("#27AE60"))
+    "actioncenter" -> GlyphIcon(Glyph.BELL, Color.WHITE, Color.parseColor("#0078D4"))
+    "keymap" -> GlyphIcon(Glyph.GRIP, Color.WHITE, Color.parseColor("#107C10"))
     "personalize" -> GlyphIcon(Glyph.IMAGE, Color.WHITE, Color.parseColor("#8E44AD"))
     else -> GlyphIcon(Glyph.GEAR, Color.WHITE, Color.parseColor("#6C7A89"))
 }

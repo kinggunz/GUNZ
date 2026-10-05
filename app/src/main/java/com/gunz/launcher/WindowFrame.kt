@@ -149,7 +149,7 @@ class WindowFrame(
         bar.setBackgroundColor(Color.parseColor(if (active) "#FF2F2F2F" else "#FF262626"))
     }
 
-    fun setSizePx(w: Int, h: Int) {
+    private fun setSizePx(w: Int, h: Int) {
         val lp = layoutParams ?: FrameLayout.LayoutParams(w, h)
         lp.width = w
         lp.height = h

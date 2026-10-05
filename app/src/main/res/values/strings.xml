@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Gunz Launcher</string>
+    <string name="keymap_desc">Mengubah tombol keyboard dan mouse menjadi sentuhan di game (keymapping). Tidak membaca atau menyimpan isi layar.</string>
+    <string name="notif_label">Gunz Launcher</string>
 </resources>

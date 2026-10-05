@@ -1,4 +1,4 @@
-# Gunz Launcher (Android 9+)
+# Gunz Launcher v3.0 (Android 8+)
 
 Launcher bergaya desktop Windows: desktop + ikon, taskbar dengan penanda aplikasi terbuka,
 menu Start, jendela mengambang (Penjelajah File, Peramban, YouTube, Notepad, Kalkulator,
@@ -44,3 +44,16 @@ APK hasil: `~/GunzLauncher.apk`. Syarat: HP ARM64, internet, ruang kosong 2-3 GB
   (aktifkan lewat logo di taskbar sebelah jam).
 - Mouse: klik kanan = menu, klik ganda ikon desktop = buka. Keyboard: Win = Start,
   Win+D = desktop, Win+E = file, Alt+Tab = ganti jendela, Alt+F4 = tutup jendela, Esc = tutup Start.
+
+
+## Baru di v3.0
+- **Wallpaper Bloom biru permanen** (digambar vektor, tidak bisa diganti).
+- **Pusat Tindakan** (ikon Wi-Fi/volume/baterai/lonceng di tray): Wi-Fi, Bluetooth, Data, GPS, Volume, Kecerahan.
+  Pengaturan di dalam launcher tidak lagi membuka Pengaturan Android (kecuali layar izin yang wajib dari Android).
+- **Notifikasi gaya Windows**: beri akses notifikasi lewat Pengaturan > Notifikasi gaya Windows.
+- **Kursor mouse Windows**, ikon baterai Windows, label aplikasi `.exe`.
+- **Mode aplikasi**: klik kanan ikon > Buka - Jendela / Borderless / Layar penuh. Taskbar auto-hide di Pengaturan.
+- **Keymapping** (jendela "Keymapping"): WASD, tembak (klik kiri / F), scope (klik kanan), G gloo, R reload, Spasi lompat, C jongkok,
+  mouse-look, sensitivitas, DPI, crosshair, preset per game. Aktifkan layanan "Gunz Keymapping" di Aksesibilitas.
+  F8 = nyala/mati, Esc = berhenti. Eksperimental: perlu diuji per game.
+
